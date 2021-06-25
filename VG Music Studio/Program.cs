@@ -1,4 +1,4 @@
-﻿using Kermalis.VGMusicStudio.Core;
+using Kermalis.VGMusicStudio.Core;
 using Kermalis.VGMusicStudio.Properties;
 using Kermalis.VGMusicStudio.UI;
 using System;
@@ -9,7 +9,7 @@ namespace Kermalis.VGMusicStudio
     internal static class Program
     {
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
 #if DEBUG
             //Debug.GBAGameCodeScan(@"C:\Users\Kermalis\Documents\Emulation\GBA\Games");
@@ -24,6 +24,7 @@ namespace Kermalis.VGMusicStudio
                 return;
             }
             Application.EnableVisualStyles();
+            MainForm.Instance.SetLaunchArgs(args);
             Application.Run(MainForm.Instance);
         }
     }

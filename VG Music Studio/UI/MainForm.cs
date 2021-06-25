@@ -1,4 +1,4 @@
-﻿using Kermalis.VGMusicStudio.Core;
+using Kermalis.VGMusicStudio.Core;
 using Kermalis.VGMusicStudio.Properties;
 using Kermalis.VGMusicStudio.Util;
 using Microsoft.WindowsAPICodePack.Dialogs;
@@ -20,6 +20,8 @@ namespace Kermalis.VGMusicStudio.UI
         private const int _intendedHeight = 675 + 1 + 125 + 24;
 
         public static MainForm Instance { get; } = new MainForm();
+
+        private string[] _launchArgs;
 
         public readonly bool[] PianoTracks = new bool[SongInfoControl.SongInfo.MaxTracks];
 
@@ -147,6 +149,7 @@ namespace Kermalis.VGMusicStudio.UI
             MinimumSize = new Size(_intendedWidth + (Width - _intendedWidth), _intendedHeight + (Height - _intendedHeight)); // Borders
             Resize += OnResize;
             Text = Utils.ProgramName;
+            Shown += MainForm_Shown;
 
             // Taskbar Buttons
             if (TaskbarManager.IsPlatformSupported)
@@ -162,6 +165,76 @@ namespace Kermalis.VGMusicStudio.UI
             }
 
             OnResize(null, null);
+        }
+        public void SetLaunchArgs(string[] args)
+        {
+            _launchArgs = args;
+        }
+
+        private void MainForm_Shown(object sender, EventArgs e)
+        {
+            string romfilename = null;
+            string engine = null;
+            long songID = -1;
+            if (_launchArgs != null && _launchArgs.Length > 0)
+            {
+                for (int i = 0; i < _launchArgs.Length; i++)
+                {
+                    switch (_launchArgs[i].ToLower())
+                    {
+                        case "-mp2k":
+                        case "-dse":
+                        case "-alphadream":
+                        case "-sdat":
+                            engine = _launchArgs[i];
+                            break;
+                        case "-filename":
+                            if (i + 1 > _launchArgs.Length) goto default;
+                            romfilename = _launchArgs[i + 1];
+                            i++;
+                            break;
+                        case "-songid":
+                            if (i + 1 > _launchArgs.Length) goto default;
+
+                            if (!long.TryParse(_launchArgs[i + 1], out songID))
+                                long.TryParse(_launchArgs[i + 1], System.Globalization.NumberStyles.HexNumber, new System.Globalization.CultureInfo("en-US"), out songID);
+                            i++;
+                            break;
+                        default:
+                            FlexibleMessageBox.Show(string.Format("Unhandled launch command {0}", _launchArgs[i]));
+                            break;
+                    }
+                }
+            }
+
+            bool success = false;
+            if (romfilename != null && romfilename.Length > 0)
+            {
+                switch (engine)
+                {
+                    case "-mp2k":
+                        success = OpenMP2K(romfilename);
+                        break;
+                    case "-dse":
+                        success = OpenDSE(romfilename);
+                        break;
+                    case "-alphadream":
+                        success = OpenAlphaDream(romfilename);
+                        break;
+                    case "-sdat":
+                        success = OpenSDAT(romfilename);
+                        break;
+                    case null:
+                    default:
+                        break;
+                }
+            }
+            else success = false;
+
+            if (success && songID > -1)
+            {
+                SetAndLoadSong(songID);
+            }
         }
 
         private void VolumeBar_ValueChanged(object sender, EventArgs e)
@@ -315,6 +388,32 @@ namespace Kermalis.VGMusicStudio.UI
             }
         }
 
+        private bool OpenDSE(string filename)
+        {
+            DisposeEngine();
+            bool success;
+            try
+            {
+                new Engine(Engine.EngineType.NDS_DSE, filename);
+                success = true;
+            }
+            catch (Exception ex)
+            {
+                FlexibleMessageBox.Show(ex, Strings.ErrorOpenDSE);
+                success = false;
+            }
+            if (success)
+            {
+                var config = (Core.NDS.DSE.Config)Engine.Instance.Config;
+                FinishLoading(config.BGMFiles.Length);
+                _songNumerical.Visible = false;
+                _exportDLSItem.Visible = false;
+                _exportMIDIItem.Visible = false;
+                _exportSF2Item.Visible = false;
+            }
+            return success;
+        }
+
         private void OpenDSE(object sender, EventArgs e)
         {
             var d = new CommonOpenFileDialog
@@ -324,28 +423,33 @@ namespace Kermalis.VGMusicStudio.UI
             };
             if (d.ShowDialog() == CommonFileDialogResult.Ok)
             {
-                DisposeEngine();
-                bool success;
-                try
-                {
-                    new Engine(Engine.EngineType.NDS_DSE, d.FileName);
-                    success = true;
-                }
-                catch (Exception ex)
-                {
-                    FlexibleMessageBox.Show(ex, Strings.ErrorOpenDSE);
-                    success = false;
-                }
-                if (success)
-                {
-                    var config = (Core.NDS.DSE.Config)Engine.Instance.Config;
-                    FinishLoading(config.BGMFiles.Length);
-                    _songNumerical.Visible = false;
-                    _exportDLSItem.Visible = false;
-                    _exportMIDIItem.Visible = false;
-                    _exportSF2Item.Visible = false;
-                }
+                OpenDSE(d.FileName);
             }
+        }
+        private bool OpenAlphaDream(string filename)
+        {
+            DisposeEngine();
+            bool success;
+            try
+            {
+                new Engine(Engine.EngineType.GBA_AlphaDream, File.ReadAllBytes(filename));
+                success = true;
+            }
+            catch (Exception ex)
+            {
+                FlexibleMessageBox.Show(ex, Strings.ErrorOpenAlphaDream);
+                success = false;
+            }
+            if (success)
+            {
+                var config = (Core.GBA.AlphaDream.Config)Engine.Instance.Config;
+                FinishLoading(config.SongTableSizes[0]);
+                _songNumerical.Visible = true;
+                _exportDLSItem.Visible = true;
+                _exportMIDIItem.Visible = false;
+                _exportSF2Item.Visible = true;
+            }
+            return success;
         }
         private void OpenAlphaDream(object sender, EventArgs e)
         {
@@ -356,28 +460,33 @@ namespace Kermalis.VGMusicStudio.UI
             };
             if (d.ShowDialog() == CommonFileDialogResult.Ok)
             {
-                DisposeEngine();
-                bool success;
-                try
-                {
-                    new Engine(Engine.EngineType.GBA_AlphaDream, File.ReadAllBytes(d.FileName));
-                    success = true;
-                }
-                catch (Exception ex)
-                {
-                    FlexibleMessageBox.Show(ex, Strings.ErrorOpenAlphaDream);
-                    success = false;
-                }
-                if (success)
-                {
-                    var config = (Core.GBA.AlphaDream.Config)Engine.Instance.Config;
-                    FinishLoading(config.SongTableSizes[0]);
-                    _songNumerical.Visible = true;
-                    _exportDLSItem.Visible = true;
-                    _exportMIDIItem.Visible = false;
-                    _exportSF2Item.Visible = true;
-                }
+                OpenAlphaDream(d.FileName);
             }
+        }
+        private bool OpenMP2K(string filename)
+        {
+            DisposeEngine();
+            bool success;
+            try
+            {
+                new Engine(Engine.EngineType.GBA_MP2K, File.ReadAllBytes(filename));
+                success = true;
+            }
+            catch (Exception ex)
+            {
+                FlexibleMessageBox.Show(ex, Strings.ErrorOpenMP2K);
+                success = false;
+            }
+            if (success)
+            {
+                var config = (Core.GBA.MP2K.Config)Engine.Instance.Config;
+                FinishLoading(config.SongTableSizes[0]);
+                _songNumerical.Visible = true;
+                _exportDLSItem.Visible = false;
+                _exportMIDIItem.Visible = true;
+                _exportSF2Item.Visible = false;
+            }
+            return success;
         }
         private void OpenMP2K(object sender, EventArgs e)
         {
@@ -388,28 +497,33 @@ namespace Kermalis.VGMusicStudio.UI
             };
             if (d.ShowDialog() == CommonFileDialogResult.Ok)
             {
-                DisposeEngine();
-                bool success;
-                try
-                {
-                    new Engine(Engine.EngineType.GBA_MP2K, File.ReadAllBytes(d.FileName));
-                    success = true;
-                }
-                catch (Exception ex)
-                {
-                    FlexibleMessageBox.Show(ex, Strings.ErrorOpenMP2K);
-                    success = false;
-                }
-                if (success)
-                {
-                    var config = (Core.GBA.MP2K.Config)Engine.Instance.Config;
-                    FinishLoading(config.SongTableSizes[0]);
-                    _songNumerical.Visible = true;
-                    _exportDLSItem.Visible = false;
-                    _exportMIDIItem.Visible = true;
-                    _exportSF2Item.Visible = false;
-                }
+                OpenMP2K(d.FileName);
             }
+        }
+        private bool OpenSDAT(string filename)
+        {
+            DisposeEngine();
+            bool success;
+            try
+            {
+                new Engine(Engine.EngineType.NDS_SDAT, new Core.NDS.SDAT.SDAT(File.ReadAllBytes(filename)));
+                success = true;
+            }
+            catch (Exception ex)
+            {
+                FlexibleMessageBox.Show(ex, Strings.ErrorOpenSDAT);
+                success = false;
+            }
+            if (success)
+            {
+                var config = (Core.NDS.SDAT.Config)Engine.Instance.Config;
+                FinishLoading(config.SDAT.INFOBlock.SequenceInfos.NumEntries);
+                _songNumerical.Visible = true;
+                _exportDLSItem.Visible = false;
+                _exportMIDIItem.Visible = false;
+                _exportSF2Item.Visible = false;
+            }
+            return success;
         }
         private void OpenSDAT(object sender, EventArgs e)
         {
@@ -420,27 +534,7 @@ namespace Kermalis.VGMusicStudio.UI
             };
             if (d.ShowDialog() == CommonFileDialogResult.Ok)
             {
-                DisposeEngine();
-                bool success;
-                try
-                {
-                    new Engine(Engine.EngineType.NDS_SDAT, new Core.NDS.SDAT.SDAT(File.ReadAllBytes(d.FileName)));
-                    success = true;
-                }
-                catch (Exception ex)
-                {
-                    FlexibleMessageBox.Show(ex, Strings.ErrorOpenSDAT);
-                    success = false;
-                }
-                if (success)
-                {
-                    var config = (Core.NDS.SDAT.Config)Engine.Instance.Config;
-                    FinishLoading(config.SDAT.INFOBlock.SequenceInfos.NumEntries);
-                    _songNumerical.Visible = true;
-                    _exportDLSItem.Visible = false;
-                    _exportMIDIItem.Visible = false;
-                    _exportSF2Item.Visible = false;
-                }
+                OpenSDAT(d.FileName);
             }
         }
 
