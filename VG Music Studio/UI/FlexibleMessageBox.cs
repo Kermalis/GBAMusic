@@ -117,6 +117,11 @@ namespace Kermalis.VGMusicStudio.UI
 
         #region Public show functions
 
+        private static string ParseException(Exception ex)
+        {
+            return string.Format("Error Details:{1}{1}{0}{1}{2}", ex.Message, Environment.NewLine, ex.StackTrace);
+        }
+
         public static DialogResult Show(string text)
         {
             return FlexibleMessageBoxForm.Show(null, text, string.Empty, MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1);
@@ -131,7 +136,7 @@ namespace Kermalis.VGMusicStudio.UI
         }
         public static DialogResult Show(Exception ex, string caption)
         {
-            return FlexibleMessageBoxForm.Show(null, string.Format("Error Details:{1}{1}{0}{1}{2}", ex.Message, Environment.NewLine, ex.StackTrace), caption, MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1);
+            return FlexibleMessageBoxForm.Show(null, ParseException(ex), caption, MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1);
         }
         public static DialogResult Show(IWin32Window owner, string text, string caption)
         {
@@ -148,6 +153,10 @@ namespace Kermalis.VGMusicStudio.UI
         public static DialogResult Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
             return FlexibleMessageBoxForm.Show(null, text, caption, buttons, icon, MessageBoxDefaultButton.Button1);
+        }
+        public static DialogResult Show(Exception ex, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            return FlexibleMessageBoxForm.Show(null, ParseException(ex), caption, buttons, icon, MessageBoxDefaultButton.Button1);
         }
         public static DialogResult Show(IWin32Window owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
         {

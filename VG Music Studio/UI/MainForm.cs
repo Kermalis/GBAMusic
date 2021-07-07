@@ -1,4 +1,5 @@
-﻿using Kermalis.VGMusicStudio.Core;
+﻿using Kermalis.EndianBinaryIO;
+using Kermalis.VGMusicStudio.Core;
 using Kermalis.VGMusicStudio.Properties;
 using Kermalis.VGMusicStudio.Util;
 using Microsoft.WindowsAPICodePack.Dialogs;
@@ -30,12 +31,13 @@ namespace Kermalis.VGMusicStudio.UI
         private readonly List<long> _remainingSongs = new List<long>();
 
         private TrackViewer _trackViewer;
+        private AssemblerDialog _assembler;
 
         #region Controls
 
         private readonly MenuStrip _mainMenu;
         private readonly ToolStripMenuItem _fileItem, _openDSEItem, _openAlphaDreamItem, _openMP2KItem, _openSDATItem,
-            _dataItem, _trackViewerItem, _exportDLSItem, _exportMIDIItem, _exportSF2Item, _exportWAVItem,
+            _dataItem, _trackViewerItem, _exportDLSItem, _exportMIDIItem, _exportSF2Item, _exportWAVItem, _importASMItem,
             _playlistItem, _endPlaylistItem;
         private readonly Timer _timer;
         private readonly ThemedNumeric _songNumerical;
@@ -79,16 +81,18 @@ namespace Kermalis.VGMusicStudio.UI
             // Data Menu
             _trackViewerItem = new ToolStripMenuItem { ShortcutKeys = Keys.Control | Keys.T, Text = Strings.TrackViewerTitle };
             _trackViewerItem.Click += OpenTrackViewer;
-            _exportDLSItem = new ToolStripMenuItem { Enabled = false, Text = Strings.MenuSaveDLS };
-            _exportDLSItem.Click += ExportDLS;
-            _exportMIDIItem = new ToolStripMenuItem { Enabled = false, Text = Strings.MenuSaveMIDI };
-            _exportMIDIItem.Click += ExportMIDI;
-            _exportSF2Item = new ToolStripMenuItem { Enabled = false, Text = Strings.MenuSaveSF2 };
-            _exportSF2Item.Click += ExportSF2;
-            _exportWAVItem = new ToolStripMenuItem { Enabled = false, Text = Strings.MenuSaveWAV };
+            _exportWAVItem = new ToolStripMenuItem { Text = Strings.MenuSaveWAV };
             _exportWAVItem.Click += ExportWAV;
-            _dataItem = new ToolStripMenuItem { Text = Strings.MenuData };
-            _dataItem.DropDownItems.AddRange(new ToolStripItem[] { _trackViewerItem, _exportDLSItem, _exportMIDIItem, _exportSF2Item, _exportWAVItem });
+            _exportMIDIItem = new ToolStripMenuItem { Text = Strings.MenuSaveMIDI };
+            _exportMIDIItem.Click += ExportMIDI;
+            _exportDLSItem = new ToolStripMenuItem { Text = Strings.MenuSaveDLS };
+            _exportDLSItem.Click += ExportDLS;
+            _exportSF2Item = new ToolStripMenuItem { Text = Strings.MenuSaveSF2 };
+            _exportSF2Item.Click += ExportSF2;
+            _importASMItem = new ToolStripMenuItem { Text = "TODO" };
+            _importASMItem.Click += OpenAssembler;
+            _dataItem = new ToolStripMenuItem { Text = Strings.MenuData, Visible = false };
+            _dataItem.DropDownItems.AddRange(new ToolStripItem[] { _trackViewerItem, _exportWAVItem, _exportMIDIItem, _exportDLSItem, _exportSF2Item, _importASMItem });
 
             // Playlist Menu
             _endPlaylistItem = new ToolStripMenuItem { Enabled = false, Text = Strings.MenuEndPlaylist };
@@ -222,7 +226,7 @@ namespace Kermalis.VGMusicStudio.UI
                 Config.Song song = songs.SingleOrDefault(s => s.Index == index);
                 if (song != null)
                 {
-                    Text = $"{Utils.ProgramName} - {song.Name}";
+                    Text = $"{Utils.ProgramName} ― {song.Name}";
                     _songsComboBox.SelectedIndex = songs.IndexOf(song) + 1; // + 1 because the "Music" playlist is first in the combobox
                 }
                 _positionBar.Maximum = Engine.Instance.Player.MaxTicks;
@@ -314,6 +318,49 @@ namespace Kermalis.VGMusicStudio.UI
                 ResetPlaylistStuff(true);
             }
         }
+        public void PreviewMP2KAssemblerSong(Assembler ass, string caption, long songHeaderOffset)
+        {
+            var p = (Core.GBA.MP2K.Player)Engine.Instance.Player;
+            bool playing = p.State == PlayerState.Playing;
+            Stop();
+            Text = Utils.ProgramName;
+            _songsComboBox.SelectedIndex = 0;
+            _songInfo.DeleteData();
+            bool success;
+            try
+            {
+                using (var reader = new EndianBinaryReader(new MemoryStream(ass.Binary), endianness: ass.Endianness))
+                {
+                    p.LoadSong(ass.Binary, reader, songHeaderOffset);
+                }
+                success = true;
+            }
+            catch (Exception ex)
+            {
+                FlexibleMessageBox.Show(ex, string.Format(Strings.ErrorLoadSong, caption));
+                success = false;
+            }
+
+            _trackViewer?.UpdateTracks();
+            if (success)
+            {
+                Text = $"{Utils.ProgramName} ― {caption}";
+                _positionBar.Maximum = p.MaxTicks;
+                _positionBar.LargeChange = _positionBar.Maximum / 10;
+                _positionBar.SmallChange = _positionBar.LargeChange / 4;
+                _songInfo.SetNumTracks(p.Events.Length);
+                if (playing)
+                {
+                    Play();
+                }
+            }
+            else
+            {
+                _songInfo.SetNumTracks(0);
+            }
+            int numTracks = (p.Events?.Length).GetValueOrDefault();
+            _positionBar.Enabled = _exportWAVItem.Enabled = _exportMIDIItem.Enabled = success && numTracks > 0;
+        }
 
         private void OpenDSE(object sender, EventArgs e)
         {
@@ -344,6 +391,7 @@ namespace Kermalis.VGMusicStudio.UI
                     _exportDLSItem.Visible = false;
                     _exportMIDIItem.Visible = false;
                     _exportSF2Item.Visible = false;
+                    _importASMItem.Visible = false;
                 }
             }
         }
@@ -376,6 +424,7 @@ namespace Kermalis.VGMusicStudio.UI
                     _exportDLSItem.Visible = true;
                     _exportMIDIItem.Visible = false;
                     _exportSF2Item.Visible = true;
+                    _importASMItem.Visible = false;
                 }
             }
         }
@@ -408,6 +457,7 @@ namespace Kermalis.VGMusicStudio.UI
                     _exportDLSItem.Visible = false;
                     _exportMIDIItem.Visible = true;
                     _exportSF2Item.Visible = false;
+                    _importASMItem.Visible = true;
                 }
             }
         }
@@ -440,6 +490,7 @@ namespace Kermalis.VGMusicStudio.UI
                     _exportDLSItem.Visible = false;
                     _exportMIDIItem.Visible = false;
                     _exportSF2Item.Visible = false;
+                    _importASMItem.Visible = false;
                 }
             }
         }
@@ -655,6 +706,7 @@ namespace Kermalis.VGMusicStudio.UI
             _autoplay = false;
             SetAndLoadSong(Engine.Instance.Config.Playlists[0].Songs.Count == 0 ? 0 : Engine.Instance.Config.Playlists[0].Songs[0].Index);
             _songsComboBox.Enabled = _songNumerical.Enabled = _playButton.Enabled = _volumeBar.Enabled = true;
+            _dataItem.Visible = true;
             UpdateTaskbarButtons();
         }
         private void DisposeEngine()
@@ -672,6 +724,7 @@ namespace Kermalis.VGMusicStudio.UI
             ResetPlaylistStuff(false);
             UpdatePositionIndicators(0L);
             UpdateTaskbarState();
+            _dataItem.Visible = false;
             _songsComboBox.SelectedIndexChanged -= SongsComboBox_SelectedIndexChanged;
             _songNumerical.ValueChanged -= SongNumerical_ValueChanged;
             _songNumerical.Visible = false;
@@ -772,6 +825,17 @@ namespace Kermalis.VGMusicStudio.UI
             _trackViewer = new TrackViewer { Owner = this };
             _trackViewer.FormClosed += (o, s) => _trackViewer = null;
             _trackViewer.Show();
+        }
+        private void OpenAssembler(object sender, EventArgs e)
+        {
+            if (_assembler != null)
+            {
+                _assembler.Focus();
+                return;
+            }
+            _assembler = new AssemblerDialog { Owner = this };
+            _assembler.FormClosed += (o, s) => _assembler = null;
+            _assembler.Show();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

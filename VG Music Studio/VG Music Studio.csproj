@@ -162,6 +162,7 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>Strings.resx</DependentUpon>
     </Compile>
+    <Compile Include="UI\AssemblerDialog.cs" />
     <Compile Include="UI\ColorSlider.cs" />
     <Compile Include="UI\PianoControl.cs" />
     <Compile Include="UI\ImageComboBox.cs">
